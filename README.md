@@ -4,7 +4,7 @@ O consumo de vinhos tem sido uma tendência de consumo na categoria de alcoólic
 
 Com base nessas estatísticas, é correto afirmar que quanto maior o consumo de vinhos, mais exigente teremos o consumidor, em busca de melhores recomendações.
 
-O Live D’Wine vem para solucionar este problema do consumidor que não possui grandes experiências experiências neste ramo e possui interesse em se aventurar nessse mundo e aprimorar seu paladar.
+O Live D’Wine vem para solucionar este problema do consumidor que não possui grandes experiências neste ramo e possui interesse em aprimorar seu paladar.
 
 ## Filtros Colaborativos
 Esse tipo de filtro é baseado nas taxas dos usuários e nos recomenda vinhos que ainda não experimentamos, mas usuários semelhantes a nós aprovaram. Para determinar se dois usuários são semelhantes ou não, esse filtro considera os vinhos classificados. Observando os itens em comum, esse tipo de algoritmo basicamente prevê a taxa similaridade de um vinho para um usuário que ainda não o experimentou, com base nas taxas de usuários semelhantes.
