@@ -58,12 +58,12 @@ def recommendations_system(wines, ratings, wine_key, size):
         try:
             size = size
         except TypeError:
-            return jsonify("Size cannot be null")
+            return "Size cannot be null"
 
         return jsonify(json.loads(result[1: int(size)].to_json(orient='records')))
 
     except:
-        return jsonify("Wine not found")
+        return "Wine not found"
 
 
 # Get the encoding of the file.
