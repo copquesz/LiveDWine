@@ -139,7 +139,6 @@ def get_recommendations_system_simple_by_csv():
 # wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
 # wines: JSON dataset with Wines.
 # ratings: JSON dataset with Ratings.
-# size: length of list to returns.
 # Returns the best wines with simple recommendation.
 @app.route('/v1/recommendations/sample/wines/csv', methods=['GET'])
 def get_recommendations_system_simple_by_json():
@@ -164,13 +163,12 @@ def get_recommendations_system_simple_by_json():
     except:
         return "Ratings set cannot be works"
 
-    return recommendations_system_simple(wines_df, users_df, ratings_df)
+    return recommendations_system_simple(wines_df, users_df, ratings_df, 10)
 
 
 # This method receives a CSV containing:
 # IMPORTANT: the csv files need must be at the root of the project within the data directory with their names 'wines' and 'ratings' or else change the variables with path.
 # wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
-# size: length of list to returns.
 # Returns a json with top(size) wines recommended.
 @app.route('/v1/recommendations/user-collaborative/wines/csv', methods=['GET'])
 def get_recommendations_system_collaborative_by_csv():
@@ -179,10 +177,6 @@ def get_recommendations_system_collaborative_by_csv():
         wine_key = request.args.get('wine_key')
     except KeyError:
         return "Wine Key cannot be null"
-
-    # number of index to return in algorithm
-    try:
-        size = request.args.get('size')
     except KeyError:
         return "Size cannot be null"
 
@@ -200,7 +194,7 @@ def get_recommendations_system_collaborative_by_csv():
     ratings_df = pd.read_csv(ratings_csv_src, sep=';', names=ratings_col, encoding=ratings_csv_encoding,
                              engine='python')
 
-    return recommendations_system_collaborative(wines_df, ratings_df, wine_key, size)
+    return recommendations_system_collaborative(wines_df, ratings_df, wine_key, 10)
 
 
 # This method receives a JSON containing:
