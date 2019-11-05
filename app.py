@@ -6,9 +6,25 @@ import pandas as pd
 import pymysql
 from flask import Flask, request, jsonify
 from sklearn.metrics import pairwise_distances
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.feature_extraction.text import CountVectorizer
 
 app = Flask(__name__)
 
+
+# Function to convert all strings to lower case and strip names of spaces
+def clean_data(x):
+    if isinstance(x, list):
+        return [str.lower(i.replace(" ", "")) for i in x]
+    else:
+        #Check if director exists. If not, return empty string
+        if isinstance(x, str):
+            return str.lower(x.replace(" ", ""))
+        else:
+            return ''
+
+def create_soup(x):
+    return ' '.join(x['type']) + ' ' + ' '.join(x['country']) + ' ' + x['region'] + ' ' + ' '.join(x['producer']) + ' ' + ' '.join(x['grape']) + ' ' + ' '.join(x['harmonization'])
 
 # This method takes the database connection.
 def get_database_connection():
@@ -154,6 +170,66 @@ def get_recommendations_system_collaborative():
 
     except:
         return "Wine not found."
+
+# TThis method recommends other wines based on their content - harmonization.
+# wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
+# Returns the best wines with based-content recommendation.
+@app.route('/v1/recommendations/based-content/wines', methods=['GET'])
+def get_recommendations_system_based_content():
+    # Key to works.
+    try:
+        wine_key = request.args.get('wine_key')
+    except KeyError:
+        return "Wine Key cannot be null"
+
+    # Get database connection
+    conn = get_database_connection()
+
+    # Load data frame.
+    wines = load_database_with_wines_features(conn)
+
+    # Close connection.
+    close_database_connection(conn)
+
+    # Prepare data frame.
+    wines['harmonization'] = wines['harmonization'].fillna('')
+    features = ['type', 'country', 'region', 'producer', 'grape']
+    for feature in features:
+        wines[feature] = wines[feature].apply(clean_data)
+    wines['soup'] = wines.apply(create_soup, axis=1)
+
+    # Import CountVectorizer and create the count matrix
+    count = CountVectorizer(stop_words=['portuguese', 'english'])
+    count_matrix = count.fit_transform(wines['soup'])
+
+    # Compute the Cosine Similarity matrix based on the count_matrix
+    cosine_sim = cosine_similarity(count_matrix, count_matrix)
+
+    # Reset index of your main DataFrame and construct reverse mapping as before
+    metadata = wines.reset_index()
+    indices = pd.Series(metadata.index, index=metadata['wine_name'])
+
+    # Get the index of the movie that matches the title
+    idx = indices[wine_key]
+
+    # Get the pairwsie similarity scores of all movies with that movie
+    sim_scores = list(enumerate(cosine_sim[idx]))
+
+    # Sort the movies based on the similarity scores
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+
+    # Get the scores of the 10 most similar movies
+    sim_scores = sim_scores[0:10]
+
+    # Get the movie indices
+    wines_indices = [i[0] for i in sim_scores]
+
+    result = wines.iloc[wines_indices]
+    result.drop(columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'image', 'producer', 'region',
+                     'service', 'type', 'volume', 'soup'], axis=1, inplace=True)
+
+    # Return the top 10 most similar movies
+    return jsonify(json.loads(result.to_json(orient='records')))
 
 
 if __name__ == '__main__':
