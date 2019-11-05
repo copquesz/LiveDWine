@@ -1,26 +1,64 @@
 import json
 import sys
 
-import chardet
 import numpy as np
 import pandas as pd
+import pymysql
 from flask import Flask, request, jsonify
 from sklearn.metrics import pairwise_distances
 
 app = Flask(__name__)
 
 
-# Identify the encoding of the file.
-def find_encoding(src):
-    file = open(src, 'rb').read()
-    result = chardet.detect(file)
-    return result['encoding']
+# This method takes the database connection.
+def get_database_connection():
+    return pymysql.connect(host='localhost', port=int(3306), user='yabaconsultoria', passwd='yaba2389', db="livedwine",
+                           charset='utf8')
 
 
-def recommendations_system_simple(wines, users, ratings, size):
+# This method closes the database connection.
+def close_database_connection(conn):
+    conn.close()
+
+
+# Load dataframe with all wines, users and ratings.
+def load_database_with_all_features(conn):
+    return pd.read_sql_query(
+        "SELECT wine.wine_id, wine.wine_name, wine.type, wine.country, wine.region, wine.alcohol_content, wine.producer, wine.service, wine.volume, wine.grape, wine.harvest, wine.harmonization, wine.image, rating.rating, user.user_id, user.user_name, user.profession, user.gender, user.age  FROM wine INNER JOIN rating ON rating.wine_id = wine.wine_id INNER JOIN user ON user.user_id = rating.user_id;",
+        conn)
+
+
+# Load dataframe with only wines and ratings.
+def load_database_with_wines_and_ratings_features(conn):
+    return pd.read_sql_query(
+        "SELECT wine.wine_id, wine.wine_name, wine.type, wine.country, wine.region, wine.alcohol_content, wine.producer, wine.service, wine.volume, wine.grape, wine.harvest, wine.harmonization, wine.image, rating.rating FROM wine INNER JOIN rating ON rating.wine_id = wine.wine_id;",
+        conn)
+
+
+# Load dataframe with only wines.
+def load_database_with_wines_features(conn):
+    return pd.read_sql_query("SELECT * FROM wine", conn)
+
+
+# Load dataframe with only ratings.
+def load_database_with_ratings_features(conn):
+    return pd.read_sql_query("SELECT * FROM rating", conn)
+
+
+# This method makes a recommendation with the best wines according to your rating score.
+# Returns the best wines with simple recommendation.
+@app.route('/v1/recommendations/sample/wines', methods=['GET'])
+def get_recommendations_system_simple():
+    # Get database connection.
+    conn = get_database_connection()
+
+    # Load data frames.
+    df = load_database_with_all_features(conn)
+
+    # Close connection.
+    close_database_connection(conn)
+
     # Prepare dataframe
-    df = pd.merge(wines, ratings)
-    df = pd.merge(df, users)
     df.drop(
         columns=['type', 'country', 'region', 'alcohol_content', 'producer', 'service', 'volume', 'grape', 'harvest',
                  'harmonization', 'image', 'user_name', 'gender', 'profession', 'age'], axis=1, inplace=True)
@@ -56,12 +94,30 @@ def recommendations_system_simple(wines, users, ratings, size):
     q_wines['score'] = q_wines.apply(weighted_rating, axis=1)
     result = q_wines.sort_values('score', ascending=False)
 
-    return jsonify(json.loads(result[0:int(size)].to_json(orient='records')))
+    return jsonify(json.loads(result[0:int(10)].to_json(orient='records')))
 
 
-def recommendations_system_collaborative(wines, ratings, wine_key, size):
-    # Merge wine dataset with matrix dataset
-    df = pd.merge(wines, ratings)
+# This method makes a recommendation with the best wines according to their similarity to other wines.
+# wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
+# Returns the best wines with collaborative recommendation.
+@app.route('/v1/recommendations/user-collaborative/wines', methods=['GET'])
+def get_recommendations_system_collaborative():
+    # Key to works.
+    try:
+        wine_key = request.args.get('wine_key')
+    except KeyError:
+        return "Wine Key cannot be null"
+
+    # Get database connection
+    conn = get_database_connection()
+
+    # Prepare data frames.
+    df = load_database_with_wines_and_ratings_features(conn)
+    wines = load_database_with_wines_features(conn)
+    ratings = load_database_with_ratings_features(conn)
+
+    # Close connection.
+    close_database_connection(conn)
 
     # Average wine ratings
     wines_df_stats = df.groupby('wine_name').agg({'rating': [np.size, np.mean]})
@@ -70,7 +126,7 @@ def recommendations_system_collaborative(wines, ratings, wine_key, size):
     min_10 = wines_df_stats['rating']['size'] >= 3
     wines_df_stats[min_10].sort_values([('rating', 'mean')], ascending=False)
 
-    # Pivo Table
+    # Pivot Table
     matrix_df = ratings.pivot_table(index=['wine_id'], columns=['user_id'], values=['rating']).reset_index(drop=True)
     matrix_df.fillna(0, inplace=True)
 
@@ -78,7 +134,7 @@ def recommendations_system_collaborative(wines, ratings, wine_key, size):
     wines_similarity = 1 - pairwise_distances(matrix_df.to_numpy(), metric='cosine')
     np.fill_diagonal(wines_similarity, 0)
 
-    # Set Similarities to Matrix Dataframe.
+    # Set Similarities to Matrix data frame.
     matrix_df = pd.DataFrame(wines_similarity)
 
     # Recommendation System
@@ -88,150 +144,16 @@ def recommendations_system_collaborative(wines, ratings, wine_key, size):
 
         wines['similarity'] = matrix_df.iloc[wine]
         wines.drop_duplicates('wine_id')
+        wines.drop(
+            columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'image', 'producer', 'region',
+                     'service', 'type', 'volume'], axis=1, inplace=True)
 
         result = pd.DataFrame(wines.sort_values(['similarity'], ascending=False))
-        try:
-            size = size
-        except TypeError:
-            return "Size cannot be null"
 
-        return jsonify(json.loads(result[0:int(size)].to_json(orient='records')))
+        return jsonify(json.loads(result[0:int(10)].to_json(orient='records')))
 
     except:
-        return "Wine not found"
-
-
-# Get the encoding of the file.
-@app.route('/v1/file/encoding', methods=['GET'])
-def get_encoding_file():
-    src = request.args.get('src')
-    encoding = find_encoding(src)
-    return jsonify(encoding)
-
-
-# This method receives a CSV containing:
-# IMPORTANT: the csv files need must be at the root of the project within the data directory with their names 'wines' and 'ratings' or else change the variables with path.
-# size: length of list to returns.
-# Returns the best wines with simple recommendation.
-@app.route('/v1/recommendations/sample/wines/csv', methods=['GET'])
-def get_recommendations_system_simple_by_csv():
-    # Detect the enconde having in wines csv file.
-    wines_csv_encoding = find_encoding('data/wines.csv')
-    wines_col = ['wine_id', 'wine_name', 'type', 'country', 'region', 'alcohol_content', 'producer', 'service',
-                 'volume', 'grape', 'harvest', 'harmonization', 'image']
-    wines = pd.read_csv('data/wines.csv', sep=';', encoding=wines_csv_encoding, names=wines_col, engine='python')
-
-    # Detect the enconde having in ratings csv file.
-    ratings_csv_encoding = find_encoding('data/wines.csv')
-    ratings_col = ['user_id', 'wine_id', 'rating']
-    ratings = pd.read_csv('data/ratings.csv', sep=';', encoding=ratings_csv_encoding, names=ratings_col,
-                          engine='python')
-
-    # Detect the enconde having in users csv file.
-    users_csv_encoding = find_encoding('data/users.csv')
-    users_col = ["user_id", 'user_name', 'gender', 'profession', 'age']
-    users = pd.read_csv('data/users.csv', sep=';', encoding=users_csv_encoding, names=users_col, engine='python')
-
-    return recommendations_system_simple(wines, users, ratings, 10)
-
-
-# This method receives a JSON containing:
-# wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
-# wines: JSON dataset with Wines.
-# ratings: JSON dataset with Ratings.
-# Returns the best wines with simple recommendation.
-@app.route('/v1/recommendations/sample/wines/csv', methods=['GET'])
-def get_recommendations_system_simple_by_json():
-    # Load Wines df
-    try:
-        wines_json = json.dumps(request.get_json()['wines'])
-        wines_df = pd.read_json(wines_json)
-    except:
-        return "Wines set cannot be works"
-
-    # Load Users df
-    try:
-        users_json = json.dumps(request.get_json()['users'])
-        users_df = pd.read_json(users_json)
-    except:
-        return "Users set cannot be works"
-
-    # Load Ratings df
-    try:
-        ratings_json = json.dumps(request.get_json()['ratings'])
-        ratings_df = pd.read_json(ratings_json)
-    except:
-        return "Ratings set cannot be works"
-
-    return recommendations_system_simple(wines_df, users_df, ratings_df, 10)
-
-
-# This method receives a CSV containing:
-# IMPORTANT: the csv files need must be at the root of the project within the data directory with their names 'wines' and 'ratings' or else change the variables with path.
-# wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
-# Returns a json with top(size) wines recommended.
-@app.route('/v1/recommendations/user-collaborative/wines/csv', methods=['GET'])
-def get_recommendations_system_collaborative_by_csv():
-    # Key to works
-    try:
-        wine_key = request.args.get('wine_key')
-    except KeyError:
-        return "Wine Key cannot be null"
-    except KeyError:
-        return "Size cannot be null"
-
-    # Load Wines df
-    wines_csv_src = 'data/wines.csv'
-    wines_csv_encoding = find_encoding(wines_csv_src)
-    wines_col = ['wine_id', 'wine_name', 'type', 'country', 'region', 'alcohol_content', 'producer', 'service',
-                 'volume', 'grape', 'harvest', 'harmonization', 'image']
-    wines_df = pd.read_csv(wines_csv_src, sep=';', names=wines_col, encoding=wines_csv_encoding, engine='python')
-
-    # Load Ratings df
-    ratings_csv_src = 'data/ratings.csv'
-    ratings_csv_encoding = find_encoding(ratings_csv_src)
-    ratings_col = ['user_id', 'wine_id', 'rating']
-    ratings_df = pd.read_csv(ratings_csv_src, sep=';', names=ratings_col, encoding=ratings_csv_encoding,
-                             engine='python')
-
-    return recommendations_system_collaborative(wines_df, ratings_df, wine_key, 10)
-
-
-# This method receives a JSON containing:
-# wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
-# wines: JSON dataset with Wines.
-# ratings: JSON dataset with Ratings.
-# size: length of list to returns.
-# Returns the best wines with collaborative recommendation.
-@app.route('/v1/recommendations/user-collaborative/wines/json', methods=['POST'])
-def get_recommendations_system_collaborative_by_json():
-    # Key to works
-    try:
-        wine_key = request.get_json()['wine_key']
-    except KeyError:
-        return "Wine Key cannot be null"
-
-    # number of index to return in algorithm
-    try:
-        size = request.get_json()['size']
-    except KeyError:
-        return "Size cannot be null"
-
-    # Load Wines df
-    try:
-        wines_json = json.dumps(request.get_json()['wines'])
-        wines_df = pd.read_json(wines_json)
-    except:
-        return "Wines set cannot be works"
-
-    # Load Rating df
-    try:
-        ratings_json = json.dumps(request.get_json()['ratings'])
-        ratings_df = pd.read_json(ratings_json)
-    except:
-        return "Ratings set cannot be works"
-
-    return recommendations_system_collaborative(wines_df, ratings_df, wine_key, size)
+        return "Wine not found."
 
 
 if __name__ == '__main__':
