@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
+    <data-source source="LOCAL" name="livedwine@localhost" uuid="5a0b5533-2942-496f-b6a9-6205c8bf4617">
+      <driver-ref>mysql.8</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>com.mysql.cj.jdbc.Driver</jdbc-driver>
+      <jdbc-url>jdbc:mysql://localhost:3306/livedwine?createDatabaseIfNotExist=true&amp;useTimezone=true&amp;serverTimezone=UTC&amp;useSSL=false</jdbc-url>
+    </data-source>
+  </component>
+</project>

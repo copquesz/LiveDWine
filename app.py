@@ -28,7 +28,7 @@ def create_soup(x):
 
 # This method takes the database connection.
 def get_database_connection():
-    return pymysql.connect(host='localhost', port=int(3306), user='yabaconsultoria', passwd='yaba2389', db="livedwine",
+    return pymysql.connect(host='localhost', port=int(3306), user='root', passwd='dev@1998', db="livedwine",
                            charset='utf8')
 
 
