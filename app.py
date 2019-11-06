@@ -5,11 +5,13 @@ import numpy as np
 import pandas as pd
 import pymysql
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from sklearn.metrics import pairwise_distances
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
 
 app = Flask(__name__)
+CORS(app)
 
 
 # Function to convert all strings to lower case and strip names of spaces
@@ -17,18 +19,22 @@ def clean_data(x):
     if isinstance(x, list):
         return [str.lower(i.replace(" ", "")) for i in x]
     else:
-        #Check if director exists. If not, return empty string
+        # Check if director exists. If not, return empty string
         if isinstance(x, str):
             return str.lower(x.replace(" ", ""))
         else:
             return ''
 
+
 def create_soup(x):
-    return ' '.join(x['type']) + ' ' + ' '.join(x['country']) + ' ' + x['region'] + ' ' + ' '.join(x['producer']) + ' ' + ' '.join(x['grape']) + ' ' + ' '.join(x['harmonization'])
+    return ' '.join(x['type']) + ' ' + ' '.join(x['country']) + ' ' + x['region'] + ' ' + ' '.join(
+        x['producer']) + ' ' + ' '.join(x['grape']) + ' ' + ' '.join(x['harmonization'])
+
 
 # This method takes the database connection.
 def get_database_connection():
-    return pymysql.connect(host='localhost', port=int(3306), user='yabaconsultoria', passwd='yaba2389', db="livedwine",
+    return pymysql.connect(host='localhost', port=int(3306), user='yabaconsultoria', passwd='yaba2389',
+                           db="livedwine",
                            charset='utf8')
 
 
@@ -40,20 +46,22 @@ def close_database_connection(conn):
 # Load dataframe with all wines, users and ratings.
 def load_database_with_all_features(conn):
     return pd.read_sql_query(
-        "SELECT wine.wine_id, wine.wine_name, wine.type, wine.country, wine.region, wine.alcohol_content, wine.producer, wine.service, wine.volume, wine.grape, wine.harvest, wine.harmonization, wine.image, rating.rating, user.user_id, user.user_name, user.profession, user.gender, user.age  FROM wine INNER JOIN rating ON rating.wine_id = wine.wine_id INNER JOIN user ON user.user_id = rating.user_id;",
+        "SELECT wine.wine_id, alcohol_content, country, harvest, image, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization, rating.rating, user.user_id, user_name, age, profession, gender FROM wine INNER JOIN rating on wine.wine_id = rating.wine_id INNER JOIN user on rating.user_id = user.user_id",
         conn)
 
 
 # Load dataframe with only wines and ratings.
 def load_database_with_wines_and_ratings_features(conn):
     return pd.read_sql_query(
-        "SELECT wine.wine_id, wine.wine_name, wine.type, wine.country, wine.region, wine.alcohol_content, wine.producer, wine.service, wine.volume, wine.grape, wine.harvest, wine.harmonization, wine.image, rating.rating FROM wine INNER JOIN rating ON rating.wine_id = wine.wine_id;",
+        "SELECT wine.wine_id, alcohol_content, country, harvest, image, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization, rating.rating FROM wine INNER JOIN rating on wine.wine_id = rating.wine_id;",
         conn)
 
 
 # Load dataframe with only wines.
 def load_database_with_wines_features(conn):
-    return pd.read_sql_query("SELECT * FROM wine", conn)
+    return pd.read_sql_query(
+        "SELECT wine_id, alcohol_content, country, harvest, image, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization FROM wine",
+        conn)
 
 
 # Load dataframe with only ratings.
@@ -116,7 +124,7 @@ def get_recommendations_system_simple():
 # This method makes a recommendation with the best wines according to their similarity to other wines.
 # wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
 # Returns the best wines with collaborative recommendation.
-@app.route('/v1/recommendations/user-collaborative/wines', methods=['GET'])
+@app.route('/v1/recommendations/collaborative/wines', methods=['GET'])
 def get_recommendations_system_collaborative():
     # Key to works.
     try:
@@ -171,6 +179,7 @@ def get_recommendations_system_collaborative():
     except:
         return "Wine not found."
 
+
 # TThis method recommends other wines based on their content - harmonization.
 # wine_key: Name of the wine that was accessed and will be worked on in the recommendation algorithm.
 # Returns the best wines with based-content recommendation.
@@ -192,8 +201,10 @@ def get_recommendations_system_based_content():
     close_database_connection(conn)
 
     # Prepare data frame.
+    item_to_remove = wines[wines['wine_name'] == wine_key].index
     wines['harmonization'] = wines['harmonization'].fillna('')
-    features = ['type', 'country', 'region', 'producer', 'grape']
+    wines['grape'] = wines['grape'].fillna('')
+    features = ['type', 'country', 'region', 'producer', 'grape', 'harmonization']
     for feature in features:
         wines[feature] = wines[feature].apply(clean_data)
     wines['soup'] = wines.apply(create_soup, axis=1)
@@ -210,7 +221,10 @@ def get_recommendations_system_based_content():
     indices = pd.Series(metadata.index, index=metadata['wine_name'])
 
     # Get the index of the movie that matches the title
-    idx = indices[wine_key]
+    try:
+        idx = indices[wine_key]
+    except:
+        return "Wine not found."
 
     # Get the pairwsie similarity scores of all movies with that movie
     sim_scores = list(enumerate(cosine_sim[idx]))
@@ -219,14 +233,16 @@ def get_recommendations_system_based_content():
     sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
 
     # Get the scores of the 10 most similar movies
-    sim_scores = sim_scores[0:10]
+    sim_scores = sim_scores[0:11]
 
     # Get the movie indices
     wines_indices = [i[0] for i in sim_scores]
 
     result = wines.iloc[wines_indices]
-    result.drop(columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'image', 'producer', 'region',
-                     'service', 'type', 'volume', 'soup'], axis=1, inplace=True)
+    result.drop(item_to_remove, axis=0, inplace=True)
+    result.drop(
+        columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'image', 'producer', 'region',
+                 'service', 'type', 'volume', 'soup'], axis=1, inplace=True)
 
     # Return the top 10 most similar movies
     return jsonify(json.loads(result.to_json(orient='records')))
