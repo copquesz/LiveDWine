@@ -46,21 +46,21 @@ def close_database_connection(conn):
 # Load dataframe with all wines, users and ratings.
 def load_database_with_all_features(conn):
     return pd.read_sql_query(
-        "SELECT wine.wine_id, alcohol_content, country, harvest, image, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization, rating.rating, user.user_id, user_name, age, profession, gender FROM wine INNER JOIN rating on wine.wine_id = rating.wine_id INNER JOIN user on rating.user_id = user.user_id",
+        "SELECT wine.wine_id, alcohol_content, country, harvest, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization, rating.rating, user.user_id, user_name, age, profession, gender FROM wine INNER JOIN rating on wine.wine_id = rating.wine_id INNER JOIN user on rating.user_id = user.user_id",
         conn)
 
 
 # Load dataframe with only wines and ratings.
 def load_database_with_wines_and_ratings_features(conn):
     return pd.read_sql_query(
-        "SELECT wine.wine_id, alcohol_content, country, harvest, image, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization, rating.rating FROM wine INNER JOIN rating on wine.wine_id = rating.wine_id;",
+        "SELECT wine.wine_id, alcohol_content, country, harvest, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization, rating.rating FROM wine INNER JOIN rating on wine.wine_id = rating.wine_id;",
         conn)
 
 
 # Load dataframe with only wines.
 def load_database_with_wines_features(conn):
     return pd.read_sql_query(
-        "SELECT wine_id, alcohol_content, country, harvest, image, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization FROM wine",
+        "SELECT wine_id, alcohol_content, country, harvest, wine_name, producer, region, service, type, volume, (SELECT GROUP_CONCAT(wine_grape.grape separator ', ') from wine_grape where wine_id = wine.wine_id) as grape, (SELECT GROUP_CONCAT(wine_harmonization.harmonization separator ', ') from wine_harmonization where wine_id = wine.wine_id) as harmonization FROM wine",
         conn)
 
 
@@ -85,7 +85,7 @@ def get_recommendations_system_simple():
     # Prepare dataframe
     df.drop(
         columns=['type', 'country', 'region', 'alcohol_content', 'producer', 'service', 'volume', 'grape', 'harvest',
-                 'harmonization', 'image', 'user_name', 'gender', 'profession', 'age'], axis=1, inplace=True)
+                 'harmonization', 'user_name', 'gender', 'profession', 'age'], axis=1, inplace=True)
 
     # Set wine's ratings and total ratings.
     wines_sizes_ratings = df.groupby('wine_id').agg({'rating': [np.size, np.mean]})
@@ -169,7 +169,7 @@ def get_recommendations_system_collaborative():
         wines['similarity'] = matrix_df.iloc[wine]
         wines.drop_duplicates('wine_id')
         wines.drop(
-            columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'image', 'producer', 'region',
+            columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'producer', 'region',
                      'service', 'type', 'volume'], axis=1, inplace=True)
 
         result = pd.DataFrame(wines.sort_values(['similarity'], ascending=False))
@@ -241,7 +241,7 @@ def get_recommendations_system_based_content():
     result = wines.iloc[wines_indices]
     result.drop(item_to_remove, axis=0, inplace=True)
     result.drop(
-        columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'image', 'producer', 'region',
+        columns=['alcohol_content', 'country', 'grape', 'harmonization', 'harvest', 'producer', 'region',
                  'service', 'type', 'volume', 'soup'], axis=1, inplace=True)
 
     # Return the top 10 most similar movies
